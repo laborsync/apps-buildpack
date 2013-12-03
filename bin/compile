@@ -27,7 +27,8 @@ cd $BUILD_DIR
 
 # Create GIT_HASH file for PHP to read
 echo "-----> Creating GIT_HASH file"
-echo $GIT_HASH > GIT_HASH
+echo "" > GIT_HASH
+echo "SetEnv GIT_HASH $GIT_HASH" >> GIT_HASH
 
 # move app things to www
 mkdir -p $CACHE_DIR/www
@@ -97,9 +98,9 @@ do
 done
 
 # Set git hash to environment variable
-GIT_HASH=`cat /app/www/GIT_HASH`; 
-echo "SetEnv GIT_HASH $GIT_HASH" >> /app/apache/conf/httpd.conf;
+cat /app/www/GIT_HASH >> /app/apache/conf/httpd.conf;
 
+# Set app appache configs
 cat /app/www/heroku/APACHE >> /app/apache/conf/httpd.conf
 
 #echo "Configuring New Relic sysmond"
