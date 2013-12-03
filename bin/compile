@@ -4,21 +4,10 @@
 # fail fast
 set -e
 
-# config
-MCRYPT_VERSION="2.5.8"
-APACHE_VERSION="2.2.25"
-PHP_VERSION="5.3.27"
-NEWRELIC_PHP_VERSION="4.2.5.26"
-#NEWRELIC_SYSMOND_VERSION="1.3.1.437"
-S3_BUCKET="https://s3.amazonaws.com/laborsync-buildpacks/apps"
-
-# git hash
-GIT_HASH=`git log -1 --format="%H"`
-
 BIN_DIR=$(dirname $0)
 BUILD_DIR=$1
 CACHE_DIR=$2
-LP_DIR=`cd $(dirname $0); cd ..; pwd`
+BUILDPACK_DIR=`cd $(dirname $0); cd ..; pwd`
 
 # include .files when moving things around
 shopt -s dotglob
@@ -26,82 +15,39 @@ shopt -s dotglob
 cd $BUILD_DIR
 
 # Create GIT_HASH file for PHP to read
-echo "-----> Creating GIT_HASH file"
-echo "" > GIT_HASH
-echo "SetEnv GIT_HASH $GIT_HASH" >> GIT_HASH
+echo "-----> Setting GIT_HASH"
+echo "" >> $BUILDPACK_DIR/conf/httpd.conf
+echo "SetEnv GIT_HASH `git log -1 --format=\"%H\"`" >> $BUILDPACK_DIR/conf/httpd.conf
 
-# move app things to www
-mkdir -p $CACHE_DIR/www
-mv * $CACHE_DIR/www
-mv $CACHE_DIR/www .
+cd $BUILD_DIR
 
-# keep Procfile
-if [ -f www/Procfile ]; then
-  mv www/Procfile .
-fi
+mkdir -p $CACHE_DIR/htdocs
+mv * $CACHE_DIR/htdocs
+mv $CACHE_DIR/htdocs .
 
-echo "-----> Bundling mcrypt version $MCRYPT_VERSION"
-MCRYPT_URL="$S3_BUCKET/mcrypt-$MCRYPT_VERSION.tar.gz"
-curl --silent --max-time 60 --location "$MCRYPT_URL" | tar xz
-
-echo "-----> Bundling Apache version $APACHE_VERSION"
-APACHE_URL="$S3_BUCKET/apache-$APACHE_VERSION.tar.gz"
-curl --silent --max-time 60 --location  "$APACHE_URL" | tar xz
-
-echo "-----> Bundling PHP version $PHP_VERSION"
-PHP_URL="$S3_BUCKET/php-$PHP_VERSION.tar.gz"
-curl --silent --max-time 60 --location "$PHP_URL" | tar xz
+echo "-----> Downloading vendors file"
+curl --silent --max-time 60 --location "https://s3.amazonaws.com/laborsync-buildpacks/apps/vendors.tar.gz" | tar xz
 
 # Move config files
-cp $LP_DIR/conf/httpd.conf apache/conf
-cp $LP_DIR/conf/php.ini php
+cp $BUILDPACK_DIR/conf/httpd.conf vendors/httpd/conf
+cp $BUILDPACK_DIR/conf/php.ini vendors/php
 
-# make php available on bin
-mkdir -p bin
-ln -s /app/php/bin/php bin/php
+mkdir logs
 
-echo "-----> Bundling New Relic PHP version $NEWRELIC_PHP_VERSION"
+cd logs
+mkdir apache
 mkdir newrelic
-NEWRELIC_PHP_URL="$S3_BUCKET/newrelic-php5-$NEWRELIC_PHP_VERSION-linux.tar.gz"
-curl --silent --max-time 60 --location "$NEWRELIC_PHP_URL" | tar xz
-mv newrelic-php5-$NEWRELIC_PHP_VERSION-linux newrelic/php5
-
-echo "-----> Setup New Relic PHP agent"
-NRBASEDIR=newrelic/php5; export NRBASEDIR
-MODULEDIR=php/lib/php/extensions/no-debug-non-zts-20090626; export MODULEDIR
-
-ARCH=x64; export ARCH
-PHPAPI=20090626; export PHPAPI
-PHPZTS=""; export PHPZTS
-rm -f $MODULEDIR/newrelic.so
-mv $NRBASEDIR/agent/$ARCH/newrelic-${PHPAPI}${PHPZTS}.so $MODULEDIR/newrelic.so
-
-#echo "-----> Bundling New Relic sysmond version $NEWRELIC_SYSMOND_VERSION"
-#NEWRELIC_SYSMOND_URL="$S3_BUCKET/newrelic-sysmond-$NEWRELIC_SYSMOND_VERSION-linux.tar.gz"
-#curl --silent --max-time 60 --location "$NEWRELIC_SYSMOND_URL" | tar xz
-#mv newrelic-sysmond-$NEWRELIC_SYSMOND_VERSION-linux newrelic/sysmond
-
-#echo "-----> Setup New Relic sysmond agent"
-#mv newrelic/sysmond/nrsysmond.cfg newrelic/sysmond/daemon/nrsysmond.cfg
-#mv newrelic/sysmond/daemon/nrsysmond.x64 newrelic/sysmond/daemon/nrsysmond
-
-mkdir newrelic/logs
-
-echo "-----> Setup Codeigniter log directory"
 mkdir codeigniter
 
 cat >>boot.sh <<EOF
 # Pass the envioronment variables to httpd.conf
 for config in \`env|cut -f1 -d=\`
 do
-  	echo "PassEnv \$config" >> /app/apache/conf/httpd.conf
+  	echo "PassEnv \$config" >> /app/vendors/httpd/conf/httpd.conf
 done
 
-# Set git hash to environment variable
-cat /app/www/GIT_HASH >> /app/apache/conf/httpd.conf;
-
 # Set app appache configs
-cat /app/www/heroku/APACHE >> /app/apache/conf/httpd.conf
+cat /app/htdocs/heroku/APACHE >> /app/vendors/httpd/conf/httpd.conf
 
 #echo "Configuring New Relic sysmond"
 #/app/newrelic/sysmond/scripts/nrsysmond-config -c /app/newrelic/sysmond/daemon/nrsysmond.cfg --set license_key="${NEWRELIC_LICENSE}" logfile="/app/newrelic/logs/sysmond" loglevel="${NEWRELIC_LOGLEVEL}" ssl=true
@@ -109,21 +55,21 @@ cat /app/www/heroku/APACHE >> /app/apache/conf/httpd.conf
 #echo "Launching New Relic sysmond"
 #/app/newrelic/sysmond/daemon/nrsysmond -c /app/newrelic/sysmond/daemon/nrsysmond.cfg
 
-touch /app/apache/logs/error_log
-touch /app/apache/logs/access_log
-touch /app/newrelic/logs/php5-daemon
-touch /app/newrelic/logs/php5-agent
-#touch /app/newrelic/logs/sysmond
-touch /app/codeigniter/log
-tail -F /app/apache/logs/error_log &
-tail -F /app/apache/logs/access_log &
-tail -F /app/newrelic/logs/php5-daemon &
-tail -F /app/newrelic/logs/php5-agent &
-#tail -F /app/newrelic/logs/sysmond &
-tail -F /app/codeigniter/log &
-export LD_LIBRARY_PATH=/app/php/ext
-echo "Launching apache"
-exec /app/apache/bin/httpd -DNO_DETACH
+touch /app/logs/apache/error_log
+touch /app/logs/apache/access_log
+touch /app/logs/newrelic/php-daemon
+touch /app/logs/newrelic/php-agent
+#touch /app/logs/newrelic/sysmond
+touch /app/logs/codeigniter/log
+tail -F /app/logs/apache/error_log &
+tail -F /app/logs/apache/access_log &
+tail -F /app/logs/newrelic/php-daemon &
+tail -F /app/logs/newrelic/php-agent &
+#tail -F /app/logs/newrelic/sysmond &
+tail -F /app/logs/codeigniter/log &
+#export LD_LIBRARY_PATH=/app/php/ext
+export PATH="$PATH":/app/vendors/apr/bin:/app/vendors/apr-util/bin:/app/vendors/httpd/bin:/app/vendors/pcre/bin:/app/vendors/php/bin
+exec apachectl start
 EOF
 
 chmod +x boot.sh
