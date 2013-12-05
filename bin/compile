@@ -23,59 +23,24 @@ mkdir -p $CACHE_DIR/htdocs
 mv * $CACHE_DIR/htdocs
 mv $CACHE_DIR/htdocs .
 
-mkdir vendors
-cd vendors
 echo "-----> Downloading vendors file"
-curl --silent --max-time 60 --location "https://s3.amazonaws.com/laborsync-buildpacks/apps/vendors.tar.gz" | tar xz
-cd ..
+curl --silent --max-time 60 --location "https://s3.amazonaws.com/laborsync-buildpacks/services/vendors.tar.gz" | tar xz
 
 # Move config files
 cp $BUILDPACK_DIR/conf/httpd.conf vendors/httpd/conf
 cp $BUILDPACK_DIR/conf/php.ini vendors/php
 
+# Move shell scripts to bin
+mkdir bin
+cp -r $BUILDPACK_DIR/bin/*.sh bin
+
+# Make shell scripts excecuteable
+chmod +x bin/*
+
 mkdir logs
-
-cd logs
-mkdir apache
-mkdir newrelic
-mkdir codeigniter
-
-cd ..
-
-cat >>boot.sh <<EOF
-# Pass the envioronment variables to httpd.conf
-for config in \`env|cut -f1 -d=\`
-do
-  	echo "PassEnv \$config" >> /app/vendors/httpd/conf/httpd.conf
-done
-
-# Set app appache configs
-cat /app/htdocs/heroku/APACHE >> /app/vendors/httpd/conf/httpd.conf
-
-#echo "Configuring New Relic sysmond"
-#/app/newrelic/sysmond/scripts/nrsysmond-config -c /app/newrelic/sysmond/daemon/nrsysmond.cfg --set license_key="${NEWRELIC_LICENSE}" logfile="/app/newrelic/logs/sysmond" loglevel="${NEWRELIC_LOGLEVEL}" ssl=true
-
-#echo "Launching New Relic sysmond"
-#/app/newrelic/sysmond/daemon/nrsysmond -c /app/newrelic/sysmond/daemon/nrsysmond.cfg
-
-touch /app/logs/apache/error_log
-touch /app/logs/apache/access_log
-touch /app/logs/newrelic/php-daemon
-touch /app/logs/newrelic/php-agent
-#touch /app/logs/newrelic/sysmond
-touch /app/logs/codeigniter/log
-tail -F /app/logs/apache/error_log &
-tail -F /app/logs/apache/access_log &
-tail -F /app/logs/newrelic/php-daemon &
-tail -F /app/logs/newrelic/php-agent &
-#tail -F /app/logs/newrelic/sysmond &
-tail -F /app/logs/codeigniter/log &
-#export LD_LIBRARY_PATH=/app/php/ext
-export PATH="$PATH":/app/vendors/apr/bin:/app/vendors/apr-util/bin:/app/vendors/httpd/bin:/app/vendors/pcre/bin:/app/vendors/php/bin
-exec apachectl start
-EOF
-
-chmod +x boot.sh
+mkdir logs/apache
+mkdir logs/newrelic
+mkdir logs/codeigniter
 
 # clean the cache
 rm -rf $CACHE_DIR

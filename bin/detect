@@ -2,8 +2,8 @@
 
 HEROKU_BUILDPACK=`cat $1/heroku/BUILDPACK`
 
-if [[ $HEROKU_BUILDPACK == 'apps-buildpack' ]]; then
-  echo "APPS Detected" && exit 0
+if [[ $HEROKU_BUILDPACK == 'services-buildpack' ]]; then
+  echo "services-buildpack" && exit 0
 else
   echo "Incorrect Buildpack" && exit 1
 fi
