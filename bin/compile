@@ -19,6 +19,9 @@ echo "SetEnv GIT_HASH `git log -1 --format=\"%H\"`" >> $BUILDPACK_DIR/conf/httpd
 
 cd $BUILD_DIR
 
+# Remove the install directory
+rm -rf install
+
 mkdir -p $CACHE_DIR/htdocs
 mv * $CACHE_DIR/htdocs
 mv $CACHE_DIR/htdocs .
